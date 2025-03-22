@@ -1,15 +1,21 @@
 module jelo_coin_backend::jelo;
 
-use sui::coin;
+use sui::coin::{Self, TreasuryCap};
 use sui::url::new_unsafe_from_bytes;
-
-public struct JELO has drop {}
 
 // 1JELO = 1_000_000_000
 // 最小交易單位 0.000000001
+// 總發行量（JELO）：1,000,000,000 JELO
+// 最小單位：0.000000001（9 decimals）
+// 總最小單位數量：1,000,000,000,000,000,000
+// 1,000,000,000 * 1_000_000_000 = 1_000_000_000_000_000_000 最小單位
+
+public struct JELO has drop {}
+
+const TOTAL_SUPPLY: u64 = 1_000_000_000_000_000_000;
 
 fun init(otw: JELO, ctx: &mut TxContext) {
-    let (treasury, metadata) = coin::create_currency(
+    let (mut treasury, metadata) = coin::create_currency(
         otw,
         9,
         b"JELO",
@@ -23,6 +29,17 @@ fun init(otw: JELO, ctx: &mut TxContext) {
         ctx,
     );
 
+    mint(&mut treasury, TOTAL_SUPPLY, ctx.sender(), ctx);
     transfer::public_freeze_object(metadata);
-    transfer::public_transfer(treasury, ctx.sender());
+    transfer::public_freeze_object(treasury);
+}
+
+public fun mint(
+    treasury_cap: &mut TreasuryCap<JELO>,
+    amount: u64,
+    recipient: address,
+    ctx: &mut TxContext,
+) {
+    let coin = coin::mint(treasury_cap, amount, ctx);
+    transfer::public_transfer(coin, recipient);
 }
