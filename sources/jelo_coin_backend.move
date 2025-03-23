@@ -200,5 +200,19 @@ fun test_lock_tokens() {
         test_clock.destroy_for_testing();
     };
 
+    scenario.next_tx(bob);
+    {
+        let locker = scenario.take_from_sender<Locker>();
+        let duration = 5000;
+        let mut test_clock = clock::create_for_testing(scenario.ctx());
+        test_clock.set_for_testing(duration);
+
+        let amount = withdraw_locked(locker, &test_clock, scenario.ctx());
+
+        assert!(amount == 100_000_000_000_000_000, EInvalidAmount);
+
+        test_clock.destroy_for_testing();
+    };
+
     scenario.end();
 }
