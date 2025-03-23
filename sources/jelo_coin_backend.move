@@ -214,5 +214,14 @@ fun test_lock_tokens() {
         test_clock.destroy_for_testing();
     };
 
+    scenario.next_tx(bob);
+    {
+        let coin = scenario.take_from_sender<coin::Coin<JELO>>();
+
+        assert!(coin.balance().value() == 100_000_000_000_000_000, EInvalidAmount);
+
+        scenario.return_to_sender(coin);
+    };
+
     scenario.end();
 }
