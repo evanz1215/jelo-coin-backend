@@ -19,6 +19,8 @@ edition = "2024.beta" # edition = "legacy" to use legacy (pre-2024) Move
 
 [addresses]
 jelo_coin_backend = "0x0"
+jelo_community = "0x0ff0e3d7c4ecbb7000a59f3758898376162c60f82d5de7f58b7249d918b12e82"
+jelo_cex="0xebaa16a927faecdebe26d9e369cc5b1e4fcee3eb9b15a451fc7d150b59a54dd2"
 
 # Named addresses will be accessible in Move as `@name`. They're also exported:
 # for example, `std = "0x1"` is exported by the Standard Library.
