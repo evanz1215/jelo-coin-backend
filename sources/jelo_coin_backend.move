@@ -80,6 +80,7 @@ fun test_init() {
         init(otw, scenario.ctx());
     };
 
+    // mint 初始 INITIAL_SUPPLY: 100_000_000_000_000_000;
     scenario.next_tx(publisher);
     {
         let mint_cap = scenario.take_from_sender<MintCapability>();
@@ -89,6 +90,27 @@ fun test_init() {
         assert!(jelo_coin.balance().value() == INITIAL_SUPPLY, EInvalidAmount);
 
         scenario.return_to_sender(jelo_coin);
+        scenario.return_to_sender(mint_cap);
+    };
+
+    // mint 剩下的 900_000_000_000_000_000;
+    scenario.next_tx(publisher);
+    {
+        let mut treasury_cap = scenario.take_from_sender<TreasuryCap<JELO>>();
+        let mut mint_cap = scenario.take_from_sender<MintCapability>();
+
+        mint(
+            &mut treasury_cap,
+            &mut mint_cap,
+            900_000_000_000_000_000,
+            scenario.ctx().sender(),
+            scenario.ctx(),
+        );
+
+        // 測試初始+本次mint的總量是否等於 TOTAL_SUPPLY
+        assert!(mint_cap.total_minted == TOTAL_SUPPLY, EInvalidAmount);
+
+        scenario.return_to_sender(treasury_cap);
         scenario.return_to_sender(mint_cap);
     };
 
