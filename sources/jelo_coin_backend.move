@@ -20,6 +20,7 @@ public struct JELO has drop {}
 
 public struct MintCapability has key {
     id: UID,
+    treasury: TreasuryCap<JELO>,
     total_minted: u64,
 }
 
@@ -33,7 +34,7 @@ const TOTAL_SUPPLY: u64 = 1_000_000_000_000_000_000;
 const INITIAL_SUPPLY: u64 = 900_000_000_000_000_000;
 
 fun init(otw: JELO, ctx: &mut TxContext) {
-    let (mut treasury, metadata) = coin::create_currency(
+    let (treasury, metadata) = coin::create_currency(
         otw,
         9,
         b"JELO",
@@ -49,30 +50,27 @@ fun init(otw: JELO, ctx: &mut TxContext) {
 
     let mut mint_cap = MintCapability {
         id: object::new(ctx),
+        treasury,
         total_minted: 0,
     };
 
-    mint(&mut treasury, &mut mint_cap, INITIAL_SUPPLY, ctx.sender(), ctx);
+    mint(&mut mint_cap, INITIAL_SUPPLY, ctx.sender(), ctx);
 
     transfer::public_freeze_object(metadata);
-    // transfer::public_freeze_object(treasury);
-    transfer::public_transfer(treasury, ctx.sender());
     transfer::transfer(mint_cap, ctx.sender());
 }
 
 public fun mint(
-    treasury_cap: &mut TreasuryCap<JELO>,
     mint_cap: &mut MintCapability,
     amount: u64,
     recipient: address,
     ctx: &mut TxContext,
 ) {
-    let coin = mint_internal(treasury_cap, mint_cap, amount, ctx);
+    let coin = mint_internal(mint_cap, amount, ctx);
     transfer::public_transfer(coin, recipient);
 }
 
 public fun mint_locked(
-    treasury_cap: &mut TreasuryCap<JELO>,
     mint_cap: &mut MintCapability,
     amount: u64,
     recipient: address,
@@ -80,7 +78,7 @@ public fun mint_locked(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let coin = mint_internal(treasury_cap, mint_cap, amount, ctx);
+    let coin = mint_internal(mint_cap, amount, ctx);
     let start_date = clock.timestamp_ms();
     let unlock_date = start_date + duration;
 
@@ -106,7 +104,6 @@ entry fun withdraw_locked(locker: &mut Locker, clock: &Clock, ctx: &mut TxContex
 }
 
 fun mint_internal(
-    treasury_cap: &mut TreasuryCap<JELO>,
     mint_cap: &mut MintCapability,
     amount: u64,
     ctx: &mut TxContext,
@@ -114,7 +111,9 @@ fun mint_internal(
     assert!(amount >0, EInvalidAmount);
     assert!(mint_cap.total_minted + amount <= TOTAL_SUPPLY, ESupplyExceeded);
 
-    let coin = coin::mint(treasury_cap, amount, ctx);
+    let treasury = &mut mint_cap.treasury;
+
+    let coin = coin::mint(treasury, amount, ctx);
 
     mint_cap.total_minted = mint_cap.total_minted + amount;
 
@@ -150,21 +149,13 @@ fun test_init() {
     // mint 剩下的 100_000_000_000_000_000;
     scenario.next_tx(publisher);
     {
-        let mut treasury_cap = scenario.take_from_sender<TreasuryCap<JELO>>();
         let mut mint_cap = scenario.take_from_sender<MintCapability>();
 
-        mint(
-            &mut treasury_cap,
-            &mut mint_cap,
-            100_000_000_000_000_000,
-            scenario.ctx().sender(),
-            scenario.ctx(),
-        );
+        mint(&mut mint_cap, 100_000_000_000_000_000, scenario.ctx().sender(), scenario.ctx());
 
         // 測試初始+本次mint的總量是否等於 TOTAL_SUPPLY
         assert!(mint_cap.total_minted == TOTAL_SUPPLY, EInvalidAmount);
 
-        scenario.return_to_sender(treasury_cap);
         scenario.return_to_sender(mint_cap);
     };
 
