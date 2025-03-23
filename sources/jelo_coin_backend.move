@@ -10,9 +10,18 @@ use sui::url::new_unsafe_from_bytes;
 // 總最小單位數量：1,000,000,000,000,000,000
 // 1,000,000,000 * 1_000_000_000 = 1_000_000_000_000_000_000 最小單位
 
+const EInvalidAmount: u64 = 0;
+const ESupplyExceeded: u64 = 1;
+
 public struct JELO has drop {}
 
+public struct MintCapability has key {
+    id: UID,
+    total_minted: u64,
+}
+
 const TOTAL_SUPPLY: u64 = 1_000_000_000_000_000_000;
+const INITIAL_SUPPLY: u64 = 100_000_000_000_000_000;
 
 fun init(otw: JELO, ctx: &mut TxContext) {
     let (mut treasury, metadata) = coin::create_currency(
@@ -29,17 +38,31 @@ fun init(otw: JELO, ctx: &mut TxContext) {
         ctx,
     );
 
-    mint(&mut treasury, TOTAL_SUPPLY, ctx.sender(), ctx);
+    let mut mint_cap = MintCapability {
+        id: object::new(ctx),
+        total_minted: 0,
+    };
+
+    mint(&mut treasury, &mut mint_cap, INITIAL_SUPPLY, ctx.sender(), ctx);
+
     transfer::public_freeze_object(metadata);
-    transfer::public_freeze_object(treasury);
+    // transfer::public_freeze_object(treasury);
+    transfer::public_transfer(treasury, ctx.sender());
+    transfer::transfer(mint_cap, ctx.sender());
 }
 
 public fun mint(
     treasury_cap: &mut TreasuryCap<JELO>,
+    mint_cap: &mut MintCapability,
     amount: u64,
     recipient: address,
     ctx: &mut TxContext,
 ) {
+    assert!(amount >0, EInvalidAmount);
+    assert!(mint_cap.total_minted + amount <= TOTAL_SUPPLY, ESupplyExceeded);
+
     let coin = coin::mint(treasury_cap, amount, ctx);
     transfer::public_transfer(coin, recipient);
+
+    mint_cap.total_minted = mint_cap.total_minted + amount;
 }
