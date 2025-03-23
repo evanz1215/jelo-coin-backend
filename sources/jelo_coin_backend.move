@@ -1,5 +1,7 @@
 module jelo_coin_backend::jelo;
 
+use sui::balance::Balance;
+use sui::clock::Clock;
 use sui::coin::{Self, TreasuryCap};
 use sui::url::new_unsafe_from_bytes;
 
@@ -10,9 +12,25 @@ use sui::url::new_unsafe_from_bytes;
 // 總最小單位數量：1,000,000,000,000,000,000
 // 1,000,000,000 * 1_000_000_000 = 1_000_000_000_000_000_000 最小單位
 
+const EInvalidAmount: u64 = 0;
+const ESupplyExceeded: u64 = 1;
+const ETokenLocked: u64 = 2;
+
 public struct JELO has drop {}
 
+public struct MintCapability has key {
+    id: UID,
+    total_minted: u64,
+}
+
+public struct Locker has key, store {
+    id: UID,
+    unlock_date: u64,
+    balance: Balance<JELO>,
+}
+
 const TOTAL_SUPPLY: u64 = 1_000_000_000_000_000_000;
+const INITIAL_SUPPLY: u64 = 900_000_000_000_000_000;
 
 fun init(otw: JELO, ctx: &mut TxContext) {
     let (mut treasury, metadata) = coin::create_currency(
@@ -29,17 +47,126 @@ fun init(otw: JELO, ctx: &mut TxContext) {
         ctx,
     );
 
-    mint(&mut treasury, TOTAL_SUPPLY, ctx.sender(), ctx);
+    let mut mint_cap = MintCapability {
+        id: object::new(ctx),
+        total_minted: 0,
+    };
+
+    mint(&mut treasury, &mut mint_cap, INITIAL_SUPPLY, ctx.sender(), ctx);
+
     transfer::public_freeze_object(metadata);
-    transfer::public_freeze_object(treasury);
+    // transfer::public_freeze_object(treasury);
+    transfer::public_transfer(treasury, ctx.sender());
+    transfer::transfer(mint_cap, ctx.sender());
 }
 
 public fun mint(
     treasury_cap: &mut TreasuryCap<JELO>,
+    mint_cap: &mut MintCapability,
     amount: u64,
     recipient: address,
     ctx: &mut TxContext,
 ) {
-    let coin = coin::mint(treasury_cap, amount, ctx);
+    let coin = mint_internal(treasury_cap, mint_cap, amount, ctx);
     transfer::public_transfer(coin, recipient);
+}
+
+public fun mint_locked(
+    treasury_cap: &mut TreasuryCap<JELO>,
+    mint_cap: &mut MintCapability,
+    amount: u64,
+    recipient: address,
+    duration: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let coin = mint_internal(treasury_cap, mint_cap, amount, ctx);
+    let start_date = clock.timestamp_ms();
+    let unlock_date = start_date + duration;
+
+    let locker = Locker {
+        id: object::new(ctx),
+        unlock_date,
+        balance: coin::into_balance(coin),
+    };
+
+    transfer::public_transfer(locker, recipient);
+}
+
+// #[allow(lint(self_transfer))]
+entry fun withdraw_locked(locker: &mut Locker, clock: &Clock, ctx: &mut TxContext) {
+    assert!(clock.timestamp_ms() >= locker.unlock_date, ETokenLocked);
+
+    let locked_balance_value = locker.balance.value();
+
+    transfer::public_transfer(
+        coin::take(&mut locker.balance, locked_balance_value, ctx),
+        ctx.sender(),
+    );
+}
+
+fun mint_internal(
+    treasury_cap: &mut TreasuryCap<JELO>,
+    mint_cap: &mut MintCapability,
+    amount: u64,
+    ctx: &mut TxContext,
+): coin::Coin<JELO> {
+    assert!(amount >0, EInvalidAmount);
+    assert!(mint_cap.total_minted + amount <= TOTAL_SUPPLY, ESupplyExceeded);
+
+    let coin = coin::mint(treasury_cap, amount, ctx);
+
+    mint_cap.total_minted = mint_cap.total_minted + amount;
+
+    coin
+}
+
+#[test_only]
+use sui::test_scenario;
+
+#[test]
+fun test_init() {
+    let publisher = @0x11;
+
+    let mut scenario = test_scenario::begin(publisher);
+    {
+        let otw = JELO {};
+        init(otw, scenario.ctx());
+    };
+
+    // mint 初始 INITIAL_SUPPLY: 100_000_000_000_000_000;
+    scenario.next_tx(publisher);
+    {
+        let mint_cap = scenario.take_from_sender<MintCapability>();
+        let jelo_coin = scenario.take_from_sender<coin::Coin<JELO>>();
+
+        assert!(mint_cap.total_minted == INITIAL_SUPPLY, EInvalidAmount);
+        assert!(jelo_coin.balance().value() == INITIAL_SUPPLY, EInvalidAmount);
+
+        scenario.return_to_sender(jelo_coin);
+        scenario.return_to_sender(mint_cap);
+    };
+
+    // mint 剩下的 100_000_000_000_000_000;
+    scenario.next_tx(publisher);
+    {
+        let mut treasury_cap = scenario.take_from_sender<TreasuryCap<JELO>>();
+        let mut mint_cap = scenario.take_from_sender<MintCapability>();
+
+        mint(
+            &mut treasury_cap,
+            &mut mint_cap,
+            100_000_000_000_000_000,
+            scenario.ctx().sender(),
+            scenario.ctx(),
+        );
+
+        // 測試初始+本次mint的總量是否等於 TOTAL_SUPPLY
+        assert!(mint_cap.total_minted == TOTAL_SUPPLY, EInvalidAmount);
+
+        scenario.return_to_sender(treasury_cap);
+        scenario.return_to_sender(mint_cap);
+    };
+
+    scenario.end();
 }
