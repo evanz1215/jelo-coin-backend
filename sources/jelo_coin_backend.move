@@ -1,7 +1,7 @@
 module jelo_coin_backend::jelo;
 
 use sui::balance::Balance;
-use sui::clock::Clock;
+use sui::clock::{Self, Clock};
 use sui::coin::{Self, TreasuryCap};
 use sui::url::new_unsafe_from_bytes;
 
@@ -163,6 +163,41 @@ fun test_init() {
         assert!(mint_cap.total_minted == TOTAL_SUPPLY, EInvalidAmount);
 
         scenario.return_to_sender(mint_cap);
+    };
+
+    scenario.end();
+}
+
+#[test]
+fun test_lock_tokens() {
+    let publisher = @0x11;
+    let bob = @0xB0B;
+
+    let mut scenario = test_scenario::begin(publisher);
+    {
+        let otw = JELO {};
+        init(otw, scenario.ctx());
+    };
+
+    scenario.next_tx(publisher);
+    {
+        let mut mint_cap = scenario.take_from_sender<MintCapability>();
+        let duration = 5000;
+        let test_clock = clock::create_for_testing(scenario.ctx());
+
+        mint_locked(
+            &mut mint_cap,
+            100_000_000_000_000_000,
+            bob,
+            duration,
+            &test_clock,
+            scenario.ctx(),
+        );
+
+        assert!(mint_cap.total_minted == TOTAL_SUPPLY, EInvalidAmount);
+
+        scenario.return_to_sender(mint_cap);
+        test_clock.destroy_for_testing();
     };
 
     scenario.end();
