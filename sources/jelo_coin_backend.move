@@ -1,7 +1,7 @@
 module jelo_coin_backend::jelo;
 
 use sui::balance::Balance;
-use sui::clock::{Self, Clock};
+use sui::clock::Clock;
 use sui::coin::{Self, TreasuryCap};
 use sui::url::new_unsafe_from_bytes;
 
@@ -128,6 +128,7 @@ fun mint_internal(
 
 #[test_only]
 use sui::test_scenario;
+use sui::clock;
 
 #[test]
 fun test_init() {
