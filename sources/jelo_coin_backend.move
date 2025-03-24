@@ -128,6 +128,8 @@ fun mint_internal(
 
 #[test_only]
 use sui::test_scenario;
+
+#[test_only]
 use sui::clock;
 
 #[test]
